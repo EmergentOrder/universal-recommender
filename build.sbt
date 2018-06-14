@@ -18,7 +18,7 @@ val pioVersion = "0.12.1"
 
 val elasticsearchVersion = "5.6.9"
 
-val sparkVersion = "2.1.1"
+val sparkVersion = "2.1.2"
 
 libraryDependencies ++= Seq(
   "org.apache.predictionio" %% "apache-predictionio-core" % pioVersion % "provided",
