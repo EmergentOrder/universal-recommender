@@ -31,12 +31,14 @@ import org.apache.http.HttpHost
 import org.apache.http.auth.{ AuthScope, UsernamePasswordCredentials }
 import org.apache.http.entity.ContentType
 import org.apache.http.entity.StringEntity
+import org.apache.http.client.config.RequestConfig
 import org.apache.http.impl.client.BasicCredentialsProvider
 import org.apache.http.impl.nio.client.HttpAsyncClientBuilder
 import org.apache.http.nio.entity.NStringEntity
 import org.joda.time.DateTime
 import org.json4s.jackson.JsonMethods._
 import org.elasticsearch.client.RestClient
+import org.elasticsearch.client.RestClientBuilder
 import org.elasticsearch.client.RestClientBuilder.HttpClientConfigCallback
 import org.elasticsearch.spark._
 import org.json4s.JValue
@@ -112,6 +114,14 @@ object EsClient {
             new BasicAuthProvider(username, password))
           case None => builder
         }
+        builder.setRequestConfigCallback(new RestClientBuilder.RequestConfigCallback() {
+          @Override
+          def customizeRequestConfig(requestConfigBuilder: RequestConfig.Builder): RequestConfig.Builder = {
+            return requestConfigBuilder.setConnectTimeout(30000)
+              .setSocketTimeout(200000);
+          }
+        })
+          .setMaxRetryTimeoutMillis(200000);
         builder.build()
       }
     }

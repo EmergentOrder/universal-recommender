@@ -808,7 +808,7 @@ class URAlgorithm(val ap: URAlgorithmParams)
         // the query
         latest = true,
         // set time limit to avoid super long DB access
-        timeout = Duration(200, "millis")).toSeq
+        timeout = Duration(30000, "millis")).toSeq
     } catch {
       case e: scala.concurrent.TimeoutException =>
         logger.error(s"Timeout when reading recent events. Empty list is used. $e")

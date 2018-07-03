@@ -8,9 +8,9 @@ version := "0.7.3"
 
 organization := "com.actionml"
 
-scalaVersion := "2.11.11"
+scalaVersion := "2.11.12"
 
-scalaVersion in ThisBuild := "2.11.11"
+scalaVersion in ThisBuild := "2.11.12"
 
 val mahoutVersion = "0.13.0"
 
