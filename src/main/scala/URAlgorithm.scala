@@ -496,7 +496,7 @@ class URAlgorithm(val ap: URAlgorithmParams)
         val hits = (searchHits \ "hits" \ "hits").extract[Seq[JValue]]
         val recs = hits.map { hit =>
           if (withRanks) {
-            val source = hit \ "source"
+            val source = hit \ "_source"
             val ranks: Map[String, Double] = rankingsParams map { backfillParams =>
               val backfillType = backfillParams.`type`.getOrElse(DefaultURAlgoParams.BackfillType)
               val backfillFieldName = backfillParams.name.getOrElse(PopModel.nameByType(backfillType))
