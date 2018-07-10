@@ -14,20 +14,20 @@ scalaVersion in ThisBuild := "2.11.12"
 
 val mahoutVersion = "0.13.0"
 
-val pioVersion = "0.12.0-incubating"
+val pioVersion = "0.12.1"
 
-val elasticsearchVersion = "5.5.2"
+val elasticsearchVersion = "5.6.9"
 
-val sparkVersion = "2.1.1"
+val sparkVersion = "2.1.2"
 
 libraryDependencies ++= Seq(
   "org.apache.predictionio" %% "apache-predictionio-core" % pioVersion % "provided",
-  "org.elasticsearch.client" % "rest" % elasticsearchVersion,
+  "org.elasticsearch.client" % "elasticsearch-rest-client" % elasticsearchVersion,
   "org.elasticsearch"       %% "elasticsearch-spark-20" % elasticsearchVersion % "provided"
     exclude("org.apache.spark", "*"),
   "org.elasticsearch"        % "elasticsearch-hadoop-mr"  % elasticsearchVersion % "provided",
-  "org.apache.spark" %% "spark-core" % "2.1.1" % "provided",
-  "org.apache.spark" %% "spark-mllib" % "2.1.1" % "provided",
+  "org.apache.spark" %% "spark-core" % sparkVersion % "provided",
+  "org.apache.spark" %% "spark-mllib" % sparkVersion % "provided",
   "org.xerial.snappy" % "snappy-java" % "1.1.1.7",
   // Mahout's Spark libs. They're custom compiled for Scala 2.11
   // and included in the local Maven repo in the .custom-scala-m2/repo resolver below
