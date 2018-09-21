@@ -23,9 +23,11 @@ import grizzled.slf4j.Logger
 import org.apache.predictionio.controller.{ P2LAlgorithm, Params }
 import org.apache.predictionio.data.storage.{ DataMap, Event, NullModel, PropertyMap }
 import org.apache.predictionio.data.store.LEventStore
+import org.apache.predictionio.data.store.PEventStore
 import org.apache.mahout.math.cf.{ DownsamplableCrossOccurrenceDataset, SimilarityAnalysis }
 import org.apache.mahout.sparkbindings.indexeddataset.IndexedDatasetSpark
 import org.apache.spark.SparkContext
+import org.apache.spark.SparkConf
 import org.apache.spark.rdd.RDD
 import org.joda.time.DateTime
 import org.json4s.JValue
@@ -34,10 +36,13 @@ import org.json4s.JsonAST._
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods._
 import com.actionml.helpers._
+import annoy4s._
+import java.nio.file.{ Paths, Files }
 
 import scala.collection.JavaConverters._
 import scala.concurrent.duration.Duration
 import scala.language.{ implicitConversions, postfixOps }
+import scala.util.Random
 
 /** Available value for algorithm param "RecsModel" */
 object RecsModels { // todo: replace this with rankings
@@ -490,6 +495,9 @@ class URAlgorithm(val ap: URAlgorithmParams)
     // val searchHitsOpt = EsClient.search(queryStr, esIndex, queryEventNames)
     val searchHitsOpt = EsClient.search(queryStr, esIndex)
 
+    val newItems: Seq[String] = getNewItems(10000) //Max possible value to capture as many as possible
+    val newItemIds: Seq[String] = newItems.map(x => x.stripPrefix("Event-")).toList.distinct
+
     val withRanks = query.withRanks.getOrElse(false)
     val predictedResults = searchHitsOpt match {
       case Some(searchHits) =>
@@ -510,8 +518,35 @@ class URAlgorithm(val ap: URAlgorithmParams)
           }
         }.toArray
         logger.info(s"Results: ${hits.length} retrieved of a possible ${(searchHits \ "hits" \ "total").extract[Long]}")
-        PredictedResult(recs)
 
+        if (Files.exists(Paths.get("./annoy_result"))) {
+
+          val annoy = Annoy.load[Int]("./annoy_result/")
+
+          val alternateRecs = recs.map { x =>
+            val cleanItemId = x.item.stripPrefix("Event-")
+            val unfilteredCandidates: Seq[String] = (annoy.query(cleanItemId.toInt, maxReturnSize = 100) match {
+              case Some(y) => y.map(z => z._1.toString)
+              case None    => Seq()
+            })
+
+            println("Got " + newItemIds.size + " new items")
+            val candidates = unfilteredCandidates.filter(x => newItemIds.contains(x)).distinct
+
+            println("# of filtered to new alternate item-content based recs: " + candidates.size)
+
+            if (candidates.isEmpty) {
+              ItemScore(x.item, x.score, ranks = x.ranks)
+            } else {
+
+              ItemScore(recommendWithExploration(candidates, cleanItemId), x.score, ranks = x.ranks)
+            }
+          }
+
+          PredictedResult(alternateRecs)
+        } else {
+          PredictedResult(recs)
+        }
       case _ =>
         logger.info(s"No results for query ${parse(queryStr)}")
         PredictedResult(Array.empty[ItemScore])
@@ -791,6 +826,31 @@ class URAlgorithm(val ap: URAlgorithmParams)
     } // no item specified
   }
 
+  def getNewItems(numItems: Int): Seq[String] = {
+
+    val json =
+      ("size" -> numItems) ~
+        ("query" ->
+          //      ("filter" -> ("range" -> 
+          ("exists" ->
+            ("field" -> "purchased-event")))
+
+    logger.info(s"json is: ${json}")
+    val compactJson = compact(render(json))
+    logger.info(s"compact json is: ${compactJson}")
+
+    val newEvents: Seq[ItemID] = EsClient.search(compactJson, esIndex) match {
+      case Some(items) =>
+        val hits = (items \ "hits" \ "hits").extract[Seq[JValue]]
+        hits.map { hit =>
+          val id = (hit \ "_id").extract[String]
+          id
+        }
+    }
+
+    newEvents
+  }
+
   /** Get recent events of the user on items to create the recommendations query from */
   def getBiasedRecentUserActions(query: Query): (Seq[BoostableCorrelators], Seq[Event]) = {
 
@@ -964,6 +1024,33 @@ class URAlgorithm(val ap: URAlgorithmParams)
       }
     logger.info(s"Index mappings for the Elasticsearch URModel: $mappings")
     mappings
+  }
+
+  def recommendWithExploration(candidates: Seq[String], originalPrediction: String): String = {
+    val freshCandidates = candidates.filter(x => !x.equals(originalPrediction))
+    val numCandidates = freshCandidates.size
+    val probabilityMap = freshCandidates.map { x => candidateToProbabilityEntry(x, originalPrediction, numCandidates) }.toMap +
+      candidateToProbabilityEntry(originalPrediction, originalPrediction, numCandidates)
+    probabilityMap.foreach(println)
+    sample(probabilityMap)
+  }
+
+  def candidateToProbabilityEntry[T](candidate: T, originalPrediction: T, numCandidates: Int): (T, Double) = {
+    val epsilon: Double = 0.1 //Probability reserved for exploration. Should extract to config
+    candidate -> (if (candidate == originalPrediction) 1.0 - epsilon else epsilon / (numCandidates))
+  }
+
+  def sample[T](dist: Map[T, Double]): T = {
+    val probabilityThreshold: Double = Random.nextDouble
+    val rangedProbabilities = dist.values.scanLeft(0.0)(_ + _).drop(1)
+    println(rangedProbabilities)
+    val rangedMap = (dist.keys zip rangedProbabilities).toMap
+    val filtered = dist.filter { x =>
+      val rangeValue = rangedMap(x._1).toDouble
+      (if (rangeValue > 0.99) 1.0 else rangeValue) >= probabilityThreshold //Handling rounding
+    }
+
+    filtered.keys.head //still getting next on empty iterator here
   }
 
 }
