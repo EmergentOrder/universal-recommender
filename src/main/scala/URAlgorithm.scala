@@ -170,8 +170,8 @@ case class URAlgorithmParams(
   dateName: Option[String] = None,
   indicators: Option[List[IndicatorParams]] = None, // control params per matrix pair
   seed: Option[Long] = None, // seed is not used presently
-  maxReturnSize: Option[Int] = None,
-  epsilon: Option[Double] = None,
+  maxAnnoyReturnSize: Option[Int] = None,
+  explorationProbability: Option[Double] = None,
   numESWriteConnections: Option[Int] = None) // hint about how to coalesce partitions so we don't overload ES when
     // writing the model. The rule of thumb is (numberOfNodesHostingPrimaries * bulkRequestQueueLength) * 0.75
     // for ES 1.7 bulk queue is defaulted to 50
@@ -253,8 +253,8 @@ class URAlgorithm(val ap: URAlgorithmParams)
   val maxEventsPerEventType: Int = ap.maxEventsPerEventType
     .getOrElse(DefaultURAlgoParams.MaxEventsPerEventType)
 
-  val epsilon: Double = ap.epsilon.getOrElse(0.1) //Probability reserved for exploration.
-  val maxReturnSize: Int = ap.maxReturnSize.getOrElse(100)
+  val epsilon: Double = ap.explorationProbability.getOrElse(0.1) //Probability reserved for exploration.
+  val maxAnnoyReturnSize: Int = ap.maxAnnoyReturnSize.getOrElse(100)
 
   // Unique by 'type' ranking params, if collision get first.
   lazy val rankingsParams: Seq[RankingParams] = ap.rankings.getOrElse(Seq(RankingParams(
@@ -290,7 +290,7 @@ class URAlgorithm(val ap: URAlgorithmParams)
     ("Random seed", randomSeed),
     ("MaxCorrelatorsPerEventType", maxCorrelatorsPerEventType),
     ("MaxEventsPerEventType", maxEventsPerEventType),
-    ("MaxReturnSize", maxReturnSize),
+    ("MaxAnnoyReturnSize", maxAnnoyReturnSize),
     ("Epsilon", epsilon),
     ("BlacklistEvents", blacklistEvents),
     ("══════════════════════════════", "════════════════════════════"),
@@ -532,7 +532,7 @@ class URAlgorithm(val ap: URAlgorithmParams)
 
           val alternateRecs = recs.map { x =>
             val cleanItemId = x.item.stripPrefix("Event-")
-            val unfilteredCandidates: Seq[String] = (annoy.query(cleanItemId.toInt, maxReturnSize = maxReturnSize) match {
+            val unfilteredCandidates: Seq[String] = (annoy.query(cleanItemId.toInt, maxReturnSize = maxAnnoyReturnSize) match {
               case Some(y) => y.map(z => z._1.toString)
               case None    => Seq()
             })
