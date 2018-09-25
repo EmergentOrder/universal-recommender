@@ -170,6 +170,8 @@ case class URAlgorithmParams(
   dateName: Option[String] = None,
   indicators: Option[List[IndicatorParams]] = None, // control params per matrix pair
   seed: Option[Long] = None, // seed is not used presently
+  maxReturnSize: Option[Int] = None,
+  epsilon: Option[Double] = None,
   numESWriteConnections: Option[Int] = None) // hint about how to coalesce partitions so we don't overload ES when
     // writing the model. The rule of thumb is (numberOfNodesHostingPrimaries * bulkRequestQueueLength) * 0.75
     // for ES 1.7 bulk queue is defaulted to 50
@@ -251,6 +253,9 @@ class URAlgorithm(val ap: URAlgorithmParams)
   val maxEventsPerEventType: Int = ap.maxEventsPerEventType
     .getOrElse(DefaultURAlgoParams.MaxEventsPerEventType)
 
+  val epsilon: Double = ap.epsilon.getOrElse(0.1) //Probability reserved for exploration.
+  val maxReturnSize: Int = ap.maxReturnSize.getOrElse(100)
+
   // Unique by 'type' ranking params, if collision get first.
   lazy val rankingsParams: Seq[RankingParams] = ap.rankings.getOrElse(Seq(RankingParams(
     name = Some(DefaultURAlgoParams.BackfillFieldName),
@@ -285,6 +290,8 @@ class URAlgorithm(val ap: URAlgorithmParams)
     ("Random seed", randomSeed),
     ("MaxCorrelatorsPerEventType", maxCorrelatorsPerEventType),
     ("MaxEventsPerEventType", maxEventsPerEventType),
+    ("MaxReturnSize", maxReturnSize),
+    ("Epsilon", epsilon),
     ("BlacklistEvents", blacklistEvents),
     ("══════════════════════════════", "════════════════════════════"),
     ("User bias", userBias),
@@ -525,15 +532,15 @@ class URAlgorithm(val ap: URAlgorithmParams)
 
           val alternateRecs = recs.map { x =>
             val cleanItemId = x.item.stripPrefix("Event-")
-            val unfilteredCandidates: Seq[String] = (annoy.query(cleanItemId.toInt, maxReturnSize = 100) match {
+            val unfilteredCandidates: Seq[String] = (annoy.query(cleanItemId.toInt, maxReturnSize = maxReturnSize) match {
               case Some(y) => y.map(z => z._1.toString)
               case None    => Seq()
             })
 
-            println("Got " + newItemIds.size + " new items")
+            logger.info("Got " + newItemIds.size + " new items")
             val candidates = unfilteredCandidates.filter(x => newItemIds.contains(x)).distinct
 
-            println("# of filtered to new alternate item-content based recs: " + candidates.size)
+            logger.info("# of filtered to new alternate item-content based recs: " + candidates.size)
 
             if (candidates.isEmpty) {
               ItemScore(x.item, x.score, ranks = x.ranks)
@@ -1031,26 +1038,23 @@ class URAlgorithm(val ap: URAlgorithmParams)
     val numCandidates = freshCandidates.size
     val probabilityMap = freshCandidates.map { x => candidateToProbabilityEntry(x, originalPrediction, numCandidates) }.toMap +
       candidateToProbabilityEntry(originalPrediction, originalPrediction, numCandidates)
-    probabilityMap.foreach(println)
     sample(probabilityMap)
   }
 
   def candidateToProbabilityEntry[T](candidate: T, originalPrediction: T, numCandidates: Int): (T, Double) = {
-    val epsilon: Double = 0.1 //Probability reserved for exploration. Should extract to config
     candidate -> (if (candidate == originalPrediction) 1.0 - epsilon else epsilon / (numCandidates))
   }
 
   def sample[T](dist: Map[T, Double]): T = {
     val probabilityThreshold: Double = Random.nextDouble
     val rangedProbabilities = dist.values.scanLeft(0.0)(_ + _).drop(1)
-    println(rangedProbabilities)
     val rangedMap = (dist.keys zip rangedProbabilities).toMap
     val filtered = dist.filter { x =>
       val rangeValue = rangedMap(x._1).toDouble
       (if (rangeValue > 0.99) 1.0 else rangeValue) >= probabilityThreshold //Handling rounding
     }
 
-    filtered.keys.head //still getting next on empty iterator here
+    filtered.keys.head
   }
 
 }
