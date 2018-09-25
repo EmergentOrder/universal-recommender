@@ -172,6 +172,7 @@ case class URAlgorithmParams(
   seed: Option[Long] = None, // seed is not used presently
   maxAnnoyReturnSize: Option[Int] = None,
   explorationProbability: Option[Double] = None,
+  numNewItems: Option[Int] = None,
   numESWriteConnections: Option[Int] = None) // hint about how to coalesce partitions so we don't overload ES when
     // writing the model. The rule of thumb is (numberOfNodesHostingPrimaries * bulkRequestQueueLength) * 0.75
     // for ES 1.7 bulk queue is defaulted to 50
@@ -255,6 +256,7 @@ class URAlgorithm(val ap: URAlgorithmParams)
 
   val epsilon: Double = ap.explorationProbability.getOrElse(0.1) //Probability reserved for exploration.
   val maxAnnoyReturnSize: Int = ap.maxAnnoyReturnSize.getOrElse(100)
+  val numNewItems: Int = ap.numNewItems.getOrElse(10000)
 
   // Unique by 'type' ranking params, if collision get first.
   lazy val rankingsParams: Seq[RankingParams] = ap.rankings.getOrElse(Seq(RankingParams(
@@ -291,7 +293,8 @@ class URAlgorithm(val ap: URAlgorithmParams)
     ("MaxCorrelatorsPerEventType", maxCorrelatorsPerEventType),
     ("MaxEventsPerEventType", maxEventsPerEventType),
     ("MaxAnnoyReturnSize", maxAnnoyReturnSize),
-    ("Epsilon", epsilon),
+    ("Exploration probability", epsilon),
+    ("NumNewItems", numNewItems),
     ("BlacklistEvents", blacklistEvents),
     ("══════════════════════════════", "════════════════════════════"),
     ("User bias", userBias),
@@ -502,7 +505,7 @@ class URAlgorithm(val ap: URAlgorithmParams)
     // val searchHitsOpt = EsClient.search(queryStr, esIndex, queryEventNames)
     val searchHitsOpt = EsClient.search(queryStr, esIndex)
 
-    val newItems: Seq[String] = getNewItems(10000) //Max possible value to capture as many as possible
+    val newItems: Seq[String] = getNewItems(numNewItems) //Max possible value to capture as many as possible
     val newItemIds: Seq[String] = newItems.map(x => x.stripPrefix("Event-")).toList.distinct
 
     val withRanks = query.withRanks.getOrElse(false)
