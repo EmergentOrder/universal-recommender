@@ -256,7 +256,7 @@ class URAlgorithm(val ap: URAlgorithmParams)
 
   val epsilon: Double = ap.explorationProbability.getOrElse(0.1) //Probability reserved for exploration.
   val maxAnnoyReturnSize: Int = ap.maxAnnoyReturnSize.getOrElse(100)
-  val numNewItems: Int = ap.numNewItems.getOrElse(10000)
+  val numNewItems: Int = ap.numNewItems.getOrElse(1000)
 
   // Unique by 'type' ranking params, if collision get first.
   lazy val rankingsParams: Seq[RankingParams] = ap.rankings.getOrElse(Seq(RankingParams(
@@ -505,9 +505,6 @@ class URAlgorithm(val ap: URAlgorithmParams)
     // val searchHitsOpt = EsClient.search(queryStr, esIndex, queryEventNames)
     val searchHitsOpt = EsClient.search(queryStr, esIndex)
 
-    val newItems: Seq[String] = getNewItems(numNewItems) //Max possible value to capture as many as possible
-    val newItemIds: Seq[String] = newItems.map(x => x.stripPrefix("Event-")).toList.distinct
-
     val withRanks = query.withRanks.getOrElse(false)
     val predictedResults = searchHitsOpt match {
       case Some(searchHits) =>
@@ -533,6 +530,9 @@ class URAlgorithm(val ap: URAlgorithmParams)
 
           val annoy = Annoy.load[Int]("./annoy_result/")
 
+          val newItems: Seq[String] = getNewItems(numNewItems) //Max possible value to capture as many as possible
+          val newItemIds: Seq[String] = newItems.map(x => x.stripPrefix("Event-")).toList.distinct
+
           val alternateRecs = recs.map { x =>
             val cleanItemId = x.item.stripPrefix("Event-")
             val unfilteredCandidates: Seq[String] = (annoy.query(cleanItemId.toInt, maxReturnSize = maxAnnoyReturnSize) match {
@@ -541,7 +541,8 @@ class URAlgorithm(val ap: URAlgorithmParams)
             })
 
             logger.info("Got " + newItemIds.size + " new items")
-            val candidates = unfilteredCandidates.filter(x => newItemIds.contains(x)).distinct
+            //val candidates = unfilteredCandidates.filter(x => newItemIds.contains(x)).distinct
+            val candidates = unfilteredCandidates.toSet.intersect(newItemIds.toSet).toSeq
 
             logger.info("# of filtered to new alternate item-content based recs: " + candidates.size)
 
