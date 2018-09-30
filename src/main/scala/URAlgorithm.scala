@@ -38,6 +38,9 @@ import org.json4s.jackson.JsonMethods._
 import com.actionml.helpers._
 import annoy4s._
 import java.nio.file.{ Paths, Files }
+import java.nio.file.StandardWatchEventKinds._
+import com.beachape.filemanagement.RxMonitor
+import akka.actor.ActorSystem
 
 import scala.collection.JavaConverters._
 import scala.concurrent.duration.Duration
@@ -187,6 +190,25 @@ case class URAlgorithmParams(
  */
 class URAlgorithm(val ap: URAlgorithmParams)
     extends P2LAlgorithm[PreparedData, NullModel, Query, PredictedResult] {
+
+  implicit val system = ActorSystem()
+
+  var annoy: Annoy[Int] = Annoy.load[Int]("./annoy_result/")
+
+  val monitor = RxMonitor()
+  val observable = monitor.observable
+
+  val subscription = observable.subscribe(
+    onNext = { p =>
+    logger.info("Refreshed annoy index")
+    annoy = Annoy.load[Int]("./annoy_result/")
+  },
+    onError = { t => logger.info(t) },
+    onCompleted = { () => logger.info("Annoy index monitor has been shut down") })
+
+  val desktopFile = Paths get "./annoy_result/"
+
+  monitor.registerPath(ENTRY_MODIFY, desktopFile)
 
   implicit val formats = DefaultFormats
 
@@ -528,8 +550,6 @@ class URAlgorithm(val ap: URAlgorithmParams)
 
         if (Files.exists(Paths.get("./annoy_result"))) {
 
-          val annoy = Annoy.load[Int]("./annoy_result/")
-
           val newItems: Seq[String] = getNewItems(numNewItems) //Max possible value to capture as many as possible
           val newItemIds: Seq[String] = newItems.map(x => x.stripPrefix("Event-")).toList.distinct
 
@@ -550,7 +570,7 @@ class URAlgorithm(val ap: URAlgorithmParams)
               ItemScore(x.item, x.score, ranks = x.ranks)
             } else {
 
-              ItemScore(recommendWithExploration(candidates, cleanItemId), x.score, ranks = x.ranks)
+              ItemScore("Event-" + recommendWithExploration(candidates, cleanItemId), x.score, ranks = x.ranks)
             }
           }
 
@@ -857,6 +877,7 @@ class URAlgorithm(val ap: URAlgorithmParams)
           val id = (hit \ "_id").extract[String]
           id
         }
+      case None => Nil
     }
 
     newEvents

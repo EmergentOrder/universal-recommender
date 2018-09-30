@@ -22,6 +22,7 @@ val sparkVersion = "2.1.2"
 
 libraryDependencies ++= Seq(
   "net.pishen" %% "annoy4s" % "0.6.0",
+  "com.beachape.filemanagement" %% "schwatcher" % "0.3.5",
   "org.apache.predictionio" %% "apache-predictionio-core" % pioVersion % "provided",
   "org.elasticsearch.client" % "elasticsearch-rest-client" % elasticsearchVersion,
   "org.elasticsearch"       %% "elasticsearch-spark-20" % elasticsearchVersion % "provided"
