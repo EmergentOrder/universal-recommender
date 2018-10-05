@@ -278,7 +278,7 @@ class URAlgorithm(val ap: URAlgorithmParams)
 
   val epsilon: Double = ap.explorationProbability.getOrElse(0.1) //Probability reserved for exploration.
   val maxAnnoyReturnSize: Int = ap.maxAnnoyReturnSize.getOrElse(100)
-  val numNewItems: Int = ap.numNewItems.getOrElse(1000)
+  val numNewItems: Int = ap.numNewItems.getOrElse(5000)
 
   // Unique by 'type' ranking params, if collision get first.
   lazy val rankingsParams: Seq[RankingParams] = ap.rankings.getOrElse(Seq(RankingParams(
@@ -553,15 +553,15 @@ class URAlgorithm(val ap: URAlgorithmParams)
           val newItems: Seq[String] = getNewItems(numNewItems) //Max possible value to capture as many as possible
           val newItemIds: Seq[String] = newItems.map(x => x.stripPrefix("Event-")).toList.distinct
 
-          val alternateRecs = recs.map { x =>
+          logger.info("Got " + newItemIds.size + " new items")
+
+          val alternateRecs = recs.par.map { x =>
             val cleanItemId = x.item.stripPrefix("Event-")
             val unfilteredCandidates: Seq[String] = (annoy.query(cleanItemId.toInt, maxReturnSize = maxAnnoyReturnSize) match {
               case Some(y) => y.map(z => z._1.toString)
               case None    => Seq()
             })
 
-            logger.info("Got " + newItemIds.size + " new items")
-            //val candidates = unfilteredCandidates.filter(x => newItemIds.contains(x)).distinct
             val candidates = unfilteredCandidates.toSet.intersect(newItemIds.toSet).toSeq
 
             logger.info("# of filtered to new alternate item-content based recs: " + candidates.size)
@@ -574,7 +574,7 @@ class URAlgorithm(val ap: URAlgorithmParams)
             }
           }
           //TODO-Dedupe
-          PredictedResult(alternateRecs)
+          PredictedResult(alternateRecs.seq.toArray)
         } else {
           PredictedResult(recs)
         }
