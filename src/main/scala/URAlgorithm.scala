@@ -573,7 +573,7 @@ class URAlgorithm(val ap: URAlgorithmParams)
               ItemScore("Event-" + recommendWithExploration(candidates, cleanItemId), x.score, ranks = x.ranks)
             }
           }
-
+          //TODO-Dedupe
           PredictedResult(alternateRecs)
         } else {
           PredictedResult(recs)
@@ -862,9 +862,10 @@ class URAlgorithm(val ap: URAlgorithmParams)
     val json =
       ("size" -> numItems) ~
         ("query" ->
-          //      ("filter" -> ("range" -> 
-          ("exists" ->
-            ("field" -> "purchased-event")))
+          ("bool" ->
+            ("must_not" ->
+              ("exists" ->
+                ("field" -> "purchased-event")))))
 
     logger.info(s"json is: ${json}")
     val compactJson = compact(render(json))
@@ -1058,6 +1059,7 @@ class URAlgorithm(val ap: URAlgorithmParams)
     mappings
   }
 
+  //TODO: Respect query filters
   def recommendWithExploration(candidates: Seq[String], originalPrediction: String): String = {
     val freshCandidates = candidates.filter(x => !x.equals(originalPrediction))
     val numCandidates = freshCandidates.size
