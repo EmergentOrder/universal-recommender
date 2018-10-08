@@ -522,7 +522,7 @@ class URAlgorithm(val ap: URAlgorithmParams)
 
     queryEventNames = query.eventNames.getOrElse(modelEventNames) // eventNames in query take precedence
 
-    val (queryStr, blacklist) = buildQuery(ap, query, rankingFieldNames)
+    val (queryStr, blacklist, boostableCorrelators) = buildQuery(ap, query, rankingFieldNames)
     // old es1 query
     // val searchHitsOpt = EsClient.search(queryStr, esIndex, queryEventNames)
     val searchHitsOpt = EsClient.search(queryStr, esIndex)
@@ -550,7 +550,7 @@ class URAlgorithm(val ap: URAlgorithmParams)
 
         if (Files.exists(Paths.get("./annoy_result"))) {
 
-          val newItems: Seq[String] = getNewItems(numNewItems) //Max possible value to capture as many as possible
+          val newItems: Seq[String] = getNewItems(numNewItems, boostableCorrelators, blacklist, query) //Max possible value to capture as many as possible
           val newItemIds: Seq[String] = newItems.map(x => x.stripPrefix("Event-")).toList.distinct
 
           logger.info("Got " + newItemIds.size + " new items")
@@ -573,8 +573,8 @@ class URAlgorithm(val ap: URAlgorithmParams)
               ItemScore("Event-" + recommendWithExploration(candidates, cleanItemId), x.score, ranks = x.ranks)
             }
           }
-          //TODO-Dedupe
-          PredictedResult(alternateRecs.seq.toArray)
+          //Dedupes so it may contain less than the request # of recs
+          PredictedResult(alternateRecs.seq.distinct.toArray)
         } else {
           PredictedResult(recs)
         }
@@ -629,7 +629,7 @@ class URAlgorithm(val ap: URAlgorithmParams)
   def buildQuery(
     ap: URAlgorithmParams,
     query: Query,
-    backfillFieldNames: Seq[String] = Seq.empty): (String, Seq[Event]) = {
+    backfillFieldNames: Seq[String] = Seq.empty): (String, Seq[Event], Seq[BoostableCorrelators]) = {
 
     logger.info(s"Got query: \n${query}")
 
@@ -673,11 +673,11 @@ class URAlgorithm(val ap: URAlgorithmParams)
       logger.info(s"compact json is: ${compactJson}")
 
       //logger.info(s"Query:\n$compactJson")
-      (compactJson, events)
+      (compactJson, events, boostable)
     } catch {
       case e: IllegalArgumentException => {
         logger.warn("whoops, IllegalArgumentException for something in buildQuery.")
-        ("", Seq.empty[Event])
+        ("", Seq.empty[Event], Seq.empty[BoostableCorrelators])
       }
     }
   }
@@ -857,15 +857,24 @@ class URAlgorithm(val ap: URAlgorithmParams)
     } // no item specified
   }
 
-  def getNewItems(numItems: Int): Seq[String] = {
+  def getNewItems(numItems: Int, boostable: Seq[BoostableCorrelators], blacklist: Seq[Event], query: Query): Seq[String] = {
+
+    val should = buildQueryShould(query, boostable)
+    val must = buildQueryMust(query, boostable)
+    val mustNot = buildQueryMustNot(query, blacklist)
+    val sort = buildQuerySort()
 
     val json =
       ("size" -> numItems) ~
         ("query" ->
           ("bool" ->
-            ("must_not" ->
-              ("exists" ->
-                ("field" -> "purchased-event")))))
+            ("should" -> should) ~
+            ("must" -> must) ~
+            ("must_not" -> mustNot) ~
+            ("must_not" -> ("exists" ->
+              ("field" -> modelEventNames.head))) ~
+              ("minimum_should_match" -> 1))) ~
+              ("sort" -> sort)
 
     logger.info(s"json is: ${json}")
     val compactJson = compact(render(json))
@@ -1059,7 +1068,6 @@ class URAlgorithm(val ap: URAlgorithmParams)
     mappings
   }
 
-  //TODO: Respect query filters
   def recommendWithExploration(candidates: Seq[String], originalPrediction: String): String = {
     val freshCandidates = candidates.filter(x => !x.equals(originalPrediction))
     val numCandidates = freshCandidates.size
