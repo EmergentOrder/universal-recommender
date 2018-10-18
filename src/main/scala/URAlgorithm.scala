@@ -548,7 +548,7 @@ class URAlgorithm(val ap: URAlgorithmParams)
         }.toArray
         logger.info(s"Results: ${hits.length} retrieved of a possible ${(searchHits \ "hits" \ "total").extract[Long]}")
 
-        if (Files.exists(Paths.get("./annoy_result"))) {
+        if (Files.exists(Paths.get("./annoy_result/ids"))) {
 
           val newItems: Seq[String] = getNewItems(numNewItems, boostableCorrelators, blacklist, query) //Max possible value to capture as many as possible
           val newItemIds: Seq[String] = newItems.map(x => x.stripPrefix("Event-")).toList.distinct
