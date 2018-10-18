@@ -193,7 +193,7 @@ class URAlgorithm(val ap: URAlgorithmParams)
 
   implicit val system = ActorSystem()
 
-  var annoy: Annoy[Int] = Annoy.load[Int]("./annoy_result/")
+  var annoy: Annoy[Int] = null
 
   val monitor = RxMonitor()
   val observable = monitor.observable
