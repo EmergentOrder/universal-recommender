@@ -550,6 +550,10 @@ class URAlgorithm(val ap: URAlgorithmParams)
 
         if (Files.exists(Paths.get("./annoy_result/ids"))) {
 
+          if (annoy == null) {
+            annoy = Annoy.load[Int]("./annoy_result/")
+          }
+
           val newItems: Seq[String] = getNewItems(numNewItems, boostableCorrelators, blacklist, query) //Max possible value to capture as many as possible
           val newItemIds: Seq[String] = newItems.map(x => x.stripPrefix("Event-")).toList.distinct
 
