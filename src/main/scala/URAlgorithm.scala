@@ -209,6 +209,7 @@ class URAlgorithm(val ap: URAlgorithmParams)
   val desktopFile = Paths get "./annoy_result/"
 
   monitor.registerPath(ENTRY_MODIFY, desktopFile)
+  monitor.registerPath(ENTRY_CREATE, desktopFile)
 
   implicit val formats = DefaultFormats
 
