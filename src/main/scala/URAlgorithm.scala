@@ -572,11 +572,11 @@ class URAlgorithm(val ap: URAlgorithmParams)
               })
 
               val candidates = unfilteredCandidates.toSet.intersect(newItemIds.toSet).toSeq
+              logger.info("# of filtered to new alternate item-content based recs: " + candidates.size)
 
               if (candidates.isEmpty) {
                 ItemScore(x.item, x.score, ranks = x.ranks)
               } else {
-                logger.info("# of filtered to new alternate item-content based recs: " + candidates.size)
                 ItemScore("Event-" + candidates(Random.nextInt(candidates.length)), x.score, ranks = x.ranks)
               }
             }
