@@ -562,20 +562,23 @@ class URAlgorithm(val ap: URAlgorithmParams)
 
           val alternateRecs = recs.par.map { x =>
             val cleanItemId = x.item.stripPrefix("Event-")
-            val unfilteredCandidates: Seq[String] = (annoy.query(cleanItemId.toInt, maxReturnSize = maxAnnoyReturnSize) match {
-              case Some(y) => y.map(z => z._1.toString)
-              case None    => Seq()
-            })
 
-            val candidates = unfilteredCandidates.toSet.intersect(newItemIds.toSet).toSeq
-
-            logger.info("# of filtered to new alternate item-content based recs: " + candidates.size)
-
-            if (candidates.isEmpty) {
+            if (Random.nextDouble > epsilon) {
               ItemScore(x.item, x.score, ranks = x.ranks)
             } else {
+              val unfilteredCandidates: Seq[String] = (annoy.query(cleanItemId.toInt, maxReturnSize = maxAnnoyReturnSize) match {
+                case Some(y) => y.map(z => z._1.toString)
+                case None    => Seq()
+              })
 
-              ItemScore("Event-" + recommendWithExploration(candidates, cleanItemId), x.score, ranks = x.ranks)
+              val candidates = unfilteredCandidates.toSet.intersect(newItemIds.toSet).toSeq
+              logger.info("# of filtered to new alternate item-content based recs: " + candidates.size)
+
+              if (candidates.isEmpty) {
+                ItemScore(x.item, x.score, ranks = x.ranks)
+              } else {
+                ItemScore("Event-" + candidates(Random.nextInt(candidates.length)), x.score, ranks = x.ranks)
+              }
             }
           }
           //Dedupes so it may contain less than the request # of recs
@@ -1071,30 +1074,6 @@ class URAlgorithm(val ap: URAlgorithmParams)
       }
     logger.info(s"Index mappings for the Elasticsearch URModel: $mappings")
     mappings
-  }
-
-  def recommendWithExploration(candidates: Seq[String], originalPrediction: String): String = {
-    val freshCandidates = candidates.filter(x => !x.equals(originalPrediction))
-    val numCandidates = freshCandidates.size
-    val probabilityMap = freshCandidates.map { x => candidateToProbabilityEntry(x, originalPrediction, numCandidates) }.toMap +
-      candidateToProbabilityEntry(originalPrediction, originalPrediction, numCandidates)
-    sample(probabilityMap)
-  }
-
-  def candidateToProbabilityEntry[T](candidate: T, originalPrediction: T, numCandidates: Int): (T, Double) = {
-    candidate -> (if (candidate == originalPrediction) 1.0 - epsilon else epsilon / (numCandidates))
-  }
-
-  def sample[T](dist: Map[T, Double]): T = {
-    val probabilityThreshold: Double = Random.nextDouble
-    val rangedProbabilities = dist.values.scanLeft(0.0)(_ + _).drop(1)
-    val rangedMap = (dist.keys zip rangedProbabilities).toMap
-    val filtered = dist.filter { x =>
-      val rangeValue = rangedMap(x._1).toDouble
-      (if (rangeValue > 0.99) 1.0 else rangeValue) >= probabilityThreshold //Handling rounding
-    }
-
-    filtered.keys.head
   }
 
 }
